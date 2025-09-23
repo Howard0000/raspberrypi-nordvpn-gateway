@@ -44,16 +44,34 @@ Dette prosjektet setter opp en Raspberry Pi som en kombinert DNS-filtreringsserv
    sudo apt update && sudo apt full-upgrade -y
    sudo reboot
    ```
-4. Sett statisk IP-adresse (tilpass til ditt nettverk):
+4. Sett statisk IP-adresse (tilpass til ditt nettverk)
 
-   ```bash
-   sudo nmcli con mod "Wired connection 1" ipv4.method manual
-   sudo nmcli con mod "Wired connection 1" ipv4.addresses 192.168.1.102/24
-   sudo nmcli con mod "Wired connection 1" ipv4.gateway 192.168.1.1
-   sudo nmcli con mod "Wired connection 1" ipv4.dns "1.1.1.1,8.8.8.8"
-   sudo nmcli con up "Wired connection 1"
-   sudo reboot
-   ```
+Bruk `nmcli` for å sette statisk IP, gateway og DNS.  
+Denne oppskriften sørger også for at DHCP ikke leverer en ekstra dynamisk adresse.
+
+```bash
+# Sett statisk IP-adresse, gateway og DNS – og skru av DHCP helt
+sudo nmcli con mod "Wired connection 1" \
+  ipv4.method manual \
+  ipv4.addresses 192.168.1.102/24 \
+  ipv4.gateway 192.168.1.1 \
+  ipv4.dns "1.1.1.1,8.8.8.8" \
+  ipv4.ignore-auto-dns yes \
+  ipv4.ignore-auto-routes yes \
+  ipv4.never-default yes \
+  ipv4.dhcp-hostname "" \
+  ipv4.dhcp-client-id "" \
+  ipv4.dhcp-timeout 0
+
+# Restart forbindelsen
+sudo nmcli con down "Wired connection 1"
+sudo nmcli con up "Wired connection 1"
+
+#Verifiser at kun den statiske IP-adressen er i bruk:
+ip -4 addr show dev eth0
+ip route | head -n1
+
+
 
    > På eldre systemer uten NetworkManager kan du bruke `dhcpcd.conf` eller `systemd-networkd`.
 
