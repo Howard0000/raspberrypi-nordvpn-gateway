@@ -50,7 +50,10 @@ Bruk `nmcli` for å sette statisk IP, gateway og DNS.
 Denne oppskriften sørger også for at DHCP ikke leverer en ekstra dynamisk adresse.
 
 ```bash
-# Sett statisk IP-adresse, gateway og DNS – og skru av DHCP helt
+# Sett statisk IP-adresse (tilpass til ditt nettverk)
+
+```bash
+# Sett statisk IP-adresse, gateway og DNS – og hindre DHCP i å gi ekstra konfig
 sudo nmcli con mod "Wired connection 1" \
   ipv4.method manual \
   ipv4.addresses 192.168.1.102/24 \
@@ -58,7 +61,6 @@ sudo nmcli con mod "Wired connection 1" \
   ipv4.dns "1.1.1.1,8.8.8.8" \
   ipv4.ignore-auto-dns yes \
   ipv4.ignore-auto-routes yes \
-  ipv4.never-default yes \
   ipv4.dhcp-hostname "" \
   ipv4.dhcp-client-id "" \
   ipv4.dhcp-timeout 0
@@ -67,9 +69,13 @@ sudo nmcli con mod "Wired connection 1" \
 sudo nmcli con down "Wired connection 1"
 sudo nmcli con up "Wired connection 1"
 
+
 #Verifiser at kun den statiske IP-adressen er i bruk:
 ip -4 addr show dev eth0
-ip route | head -n1
+ip route
+ping -c 3 1.1.1.1
+ping -c 3 google.com
+
 
 
 
