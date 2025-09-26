@@ -28,7 +28,8 @@ need_root() {
 
 check_deps() {
   local missing=()
-  for bin in iptables ip rule ip route tcpdump timeout grep awk sed; do
+  # Viktig: sjekk 'ip' kun én gang (ikke 'rule'/'route' som egne binærfiler)
+  for bin in ip iptables tcpdump timeout grep awk sed; do
     command -v "$bin" >/dev/null 2>&1 || missing+=("$bin")
   done
   if (( ${#missing[@]} )); then
@@ -60,13 +61,16 @@ print_header() {
 show_rules() {
   echo
   echo "[1/3] Søker etter MANGLE-regler som merker ${PROTO^^} trafikk til port $PORT med MARK $MARK_HEX ..."
-  iptables -t mangle -S PREROUTING | grep -iE "\-p[[:space:]]+$PROTO" | grep -iE "--dport[[:space:]]+$PORT" | grep -iE "MARK --set-mark[[:space:]]+1|MARK --set-mark[[:space:]]+$MARK_HEX" || {
-    echo "⚠️  Fant ingen matchende mangle-regel for $PROTO/$PORT som setter MARK 1." >&2
-  }
+  # Bruk -e slik at '--dport ...' ikke tolkes som grep-flagg
+  iptables -t mangle -S PREROUTING \
+    | grep -iE "\-p[[:space:]]+$PROTO" \
+    | grep -iE -e "--dport[[:space:]]+$PORT" \
+    | grep -iE "MARK[[:space:]]+--set-mark[[:space:]]+(1|$MARK_HEX)" \
+    || echo "⚠️  Fant ingen matchende mangle-regel for $PROTO/$PORT som setter MARK 1." >&2
 
   echo
   echo "[2/3] Viser ip-rule som sender MARK $MARK_HEX til egen rutetabell ..."
-  ip rule show | grep -i "fwmark 0x1" || echo "⚠️  Fant ingen 'ip rule' for fwmark 0x1."
+  ip rule show | grep -i "fwmark[[:space:]]\+0x1" || echo "⚠️  Fant ingen 'ip rule' for fwmark 0x1."
 
   local rt_table
   rt_table="$(detect_rt_table)"
