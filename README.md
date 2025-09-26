@@ -2,32 +2,37 @@
 
 Norsk · [English](README.en.md)
 
-Dette prosjektet setter opp en Raspberry Pi som en kombinert DNS-filtreringsserver (Pi-hole) og NordVPN-gateway med selektiv ruting basert på IP og/eller porter. Det inkluderer robust oppstart og overvåkning via MQTT og systemd.
+Dette prosjektet setter opp en Raspberry Pi som en kombinert DNS-filtreringsserver (Pi-hole) og NordVPN-gateway med selektiv ruting basert på IP og/eller porter.  
+Det inkluderer robust oppstart og overvåkning via MQTT og systemd.
 
 ---
 
 ## 🧭 Mål
 
-* Raspberry Pi med statisk IP-adresse.
-* Pi-hole for lokal DNS-blokkering på hele nettverket.
-* NordVPN-tilkobling for trafikk fra utvalgte enheter og/eller porter.
-* Automatisk gjenoppretting av VPN-tilkobling ved ruter-/nettverksfeil.
-* (Valgfritt) Integrasjon med Home Assistant via MQTT for overvåkning.
+- Raspberry Pi med statisk IP-adresse.
+- Pi-hole for lokal DNS-blokkering på hele nettverket.
+- NordVPN-tilkobling for trafikk fra utvalgte enheter og/eller porter.
+- Automatisk gjenoppretting av VPN-tilkobling ved ruter-/nettverksfeil.
+- (Valgfritt) Integrasjon med Home Assistant via MQTT for overvåkning.
 
 ---
 
 ## 📦 Krav
 
-* Raspberry Pi 3, 4 eller 5 (kablet nettverk er sterkt anbefalt).
-* Raspberry Pi OS Lite (64-bit), Bookworm eller nyere.
-* NordVPN-konto.
-* MQTT-broker (valgfritt, kun for Home Assistant-integrasjon).
+- Raspberry Pi 3, 4 eller 5 (kablet nettverk er sterkt anbefalt).
+- Raspberry Pi OS Lite (64-bit), Bookworm eller nyere.
+- NordVPN-konto.
+- MQTT-broker (valgfritt, kun for Home Assistant-integrasjon).
 
 ---
 
 ## ⚠️ Viktig før du starter
-- **IPv6**: Oppsettet er IPv4-basert. Hvis du har IPv6 aktivt i nettverket ditt, kan trafikk lekke utenom VPN. Slå av IPv6 på Pi og klientene dine, eller legg til tilsvarende IPv6-regler.  
-- **CORRECT_GATEWAY**: I `nordvpn-gateway.sh` må du sette variabelen `CORRECT_GATEWAY` til IP-adressen til din egen ruter (f.eks. `192.168.1.1`).  
+
+- **IPv6**: Oppsettet er IPv4-basert. Hvis du har IPv6 aktivt i nettverket ditt, kan trafikk lekke utenom VPN.  
+  **Det anbefales sterkt å deaktivere IPv6** på Pi-en og/eller klientene dine for å unngå sikkerhetshull og lekkasjer.
+
+- **CORRECT_GATEWAY**: I `nordvpn-gateway.sh` må du sette variabelen `CORRECT_GATEWAY` til IP-adressen til din egen ruter (f.eks. `192.168.1.1`).
+
 - **CPU-temp**: Publisering av CPU-temperatur til MQTT er **av som standard** (`ENABLE_CPU_TEMP=false`). Skru på om du vil bruke den.
 
 ---
@@ -36,50 +41,55 @@ Dette prosjektet setter opp en Raspberry Pi som en kombinert DNS-filtreringsserv
 
 ### 0. Systemoppsett
 
-1. Installer Raspberry Pi OS Lite (64-bit).
-2. Koble til via SSH.
+1. Installer Raspberry Pi OS Lite (64-bit).  
+2. Koble til via SSH.  
 3. Oppdater systemet:
 
    ```bash
    sudo apt update && sudo apt full-upgrade -y
    sudo reboot
    ```
-4. Sett statisk IP-adresse (tilpass til ditt nettverk)
 
-Bruk `nmcli` for å sette statisk IP, gateway og DNS.  
-Denne oppskriften sørger også for at DHCP ikke leverer en ekstra dynamisk adresse.
+   *Etter omstart, koble til via SSH igjen.*
 
-```bash
-# Sett statisk IP-adresse (tilpass til ditt nettverk)
+4. **Sett statisk IP-adresse, gateway og DNS**
 
-```bash
-# Sett statisk IP-adresse, gateway og DNS – og hindre DHCP i å gi ekstra konfig
-sudo nmcli con mod "Wired connection 1" \
-  ipv4.method manual \
-  ipv4.addresses 192.168.1.102/24 \
-  ipv4.gateway 192.168.1.1 \
-  ipv4.dns "1.1.1.1,8.8.8.8" \
-  ipv4.ignore-auto-dns yes \
-  ipv4.ignore-auto-routes yes \
-  ipv4.dhcp-hostname "" \
-  ipv4.dhcp-client-id "" \
-  ipv4.dhcp-timeout 0
-
-# Restart forbindelsen
-sudo nmcli con down "Wired connection 1"
-sudo nmcli con up "Wired connection 1"
+   Vi bruker `nmcli` (standard i nyere Raspberry Pi OS):
 
 
-#Verifiser at kun den statiske IP-adressen er i bruk:
-ip -4 addr show dev eth0
-ip route
-ping -c 3 1.1.1.1
-ping -c 3 google.com
+  ```bash
+  # 1) Finn riktig tilkoblingsnavn (bruk det som dukker opp for TYPE=ethernet)
+  nmcli -t -f NAME,TYPE con show   # Eksempel: "Wired connection 1"
+  CONN_NAME="Wired connection 1"
 
+  # 2) Sett verdier
+  RPIS_IP="192.168.1.102/24"
+  RTR_IP="192.168.1.1"
+  NET_IFACE="eth0"
 
+  # 3) Konfigurer statisk IPv4 på tilkoblingen
+  sudo nmcli con mod "$CONN_NAME" \
+    ipv4.method manual \
+    ipv4.addresses "$RPIS_IP" \
+    ipv4.gateway "$RTR_IP" \
+    ipv4.dns "1.1.1.1,8.8.8.8" \
+    ipv4.ignore-auto-dns yes \
+    ipv4.ignore-auto-routes yes \
+    ipv4.dhcp-hostname "" \
+    ipv4.dhcp-client-id "" \
+    ipv4.dhcp-timeout 0
 
+  # 4) Restart tilkoblingen (NB: SSH kan falle et par sekunder mens den kommer opp igjen)
+  echo "Starter nettverkstilkobling på nytt..."
+  sudo nmcli con down "$CONN_NAME"
+  sleep 2
+  sudo nmcli con up "$CONN_NAME"
+  echo "Nettverkstilkobling restartet."
 
-   > På eldre systemer uten NetworkManager kan du bruke `dhcpcd.conf` eller `systemd-networkd`.
+  # 5) Verifiser
+  ip addr show dev "$NET_IFACE"
+  ip route
+  ```
 
 ---
 
@@ -89,6 +99,9 @@ ping -c 3 google.com
 curl -sSL https://install.pi-hole.net | bash
 ```
 
+Følg veiviseren (velg IPv4, webgrensesnitt, logging, osv.).  
+Noter admin-passordet etter installasjonen.
+
 ---
 
 ### 2. Installer iptables-persistent og aktiver IP forwarding
@@ -97,11 +110,20 @@ curl -sSL https://install.pi-hole.net | bash
 sudo apt install iptables-persistent -y
 ```
 
-Rediger `/etc/sysctl.conf` og sørg for at:
+- IPv4: Velg `Yes`  
+- IPv6: Velg `No`
 
-```ini
+Rediger `/etc/sysctl.conf`:
+
+```bash
+sudo nano /etc/sysctl.conf
+```
+
+Avkommenter eller legg til:
+```bash
 net.ipv4.ip_forward=1
 ```
+
 
 Aktiver:
 
@@ -113,23 +135,45 @@ sudo sysctl -p
 
 ### 3. Installer og konfigurer NordVPN
 
-Installer NordVPN-klienten:
+Installer:
 
 ```bash
 sh <(curl -sSf https://downloads.nordcdn.com/apps/linux/install.sh)
-```
-
-Gi brukeren tilgang og start på nytt:
-
-```bash
 sudo usermod -aG nordvpn $USER
 sudo reboot
 ```
 
-Etter omstart, logg inn og konfigurer:
+Etter omstart → logg inn:
+
+Start innloggingen på Raspberry Pi:
 
 ```bash
 nordvpn login
+```
+Terminalen vil gi deg en lang lenke som starter med https://api.nordvpn.com/....
+
+Åpne lenken på PC/Mac, logg inn med NordVPN-brukeren din.
+
+---
+
+Etter innlogging får du en side med teksten "Great - you're in!" og en Continue-knapp.
+
+Ikke klikk på knappen.
+
+Høyreklikk på Continue og velg Kopier lenkeadresse.
+
+Gå tilbake til Raspberry Pi og fullfør innloggingen:
+
+```bash
+# Kopier callback-lenken:
+nordvpn login --callback "nordvpn://login?...din-lenke..."
+```
+Du skal nå få en bekreftelse i terminalen på at innloggingen var vellykket.
+
+
+Sett innstillinger:
+
+```bash
 nordvpn set killswitch disabled
 nordvpn set dns off
 nordvpn set autoconnect disabled
@@ -144,57 +188,125 @@ nordvpn set analytics disabled
 ### 4. Opprett egen routing-tabell
 
 ```bash
-grep -qE '^\s*200\s+nordvpntabell\b' /etc/iproute2/rt_tables || \
+grep -qE '^\s*200\s+nordvpntabell' /etc/iproute2/rt_tables || \
   echo "200 nordvpntabell" | sudo tee -a /etc/iproute2/rt_tables
 ```
 
 ---
 
-### 5. Konfigurer brannmur og selektiv ruting (iptables)
+### 5. iptables-regler (Sikker og selektiv ruting)
+
+Denne delen konfigurerer brannmurreglene for å tillate nødvendig trafikk til Pi-en, sette opp selektiv ruting for VPN-trafikk, og til slutt stramme inn sikkerheten.  
+Vi gjør dette trinnvis for å unngå å låse oss ute.
+
+> **Viktig:** Bekreft at du har SSH-tilgang til Pi-en din og at NordVPN-klienten er installert og konfigurert (Steg 3).  
+> Sørg for at du har notert ditt lokale nettverks-CIDR (f.eks. `192.168.1.0/24`), ditt lokale nettverksgrensesnitt (`eth0` eller `wlan0`), og at `nordlynx` er VPN-grensesnittet.
+
+#### 5.1 Tøm eksisterende regler
 
 ```bash
-# STEG 1: Tøm eksisterende regler
+echo "--- STEG 5.1: Tømmer eksisterende iptables-regler ---"
 sudo iptables -F && sudo iptables -t nat -F && sudo iptables -t mangle -F
 sudo iptables -X && sudo iptables -t nat -X && sudo iptables -t mangle -X
+```
 
-# STEG 2: Standardpolicy
+#### 5.2 Sett midlertidige, mykere standardpolicyer
+
+```bash
+echo "--- STEG 5.2: Setter midlertidige ACCEPT policyer for feilsøking ---"
+sudo iptables -P INPUT ACCEPT
+sudo iptables -P FORWARD ACCEPT
+sudo iptables -P OUTPUT ACCEPT
+```
+
+#### 5.3 Grunnleggende INPUT ACCEPT-regler
+
+```bash
+echo "--- STEG 5.3: Setter kritiske INPUT ACCEPT-regler ---"
+sudo iptables -I INPUT 1 -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT
+sudo iptables -I INPUT 2 -i lo -j ACCEPT
+sudo iptables -I INPUT 3 -p icmp -j ACCEPT
+sudo iptables -I INPUT 4 -s 192.168.1.0/24 -p tcp --dport 22 -j ACCEPT
+```
+
+#### 5.4 Resten av INPUT-reglene (DNS + Pi-hole web)
+
+```bash
+echo "--- STEG 5.4: Legger til resten av INPUT-regler ---"
+sudo iptables -A INPUT -s 192.168.1.0/24 -p udp --dport 53 -j ACCEPT
+sudo iptables -A INPUT -s 192.168.1.0/24 -p tcp --dport 53 -j ACCEPT
+sudo iptables -A INPUT -s 192.168.1.0/24 -p tcp --dport 80 -j ACCEPT
+```
+
+#### 5.5 MANGLE / MARK-regler (for selektiv ruting)
+
+```bash
+echo "--- STEG 5.5: Setter MANGLE / MARK-regler ---"
+# Eksempel – bytt til IP-ene til dine klienter
+CLIENT_IPS_TO_VPN="192.168.1.128 192.168.1.129 192.168.1.130 192.168.1.131"  
+# Eksempel – bytt til din port
+PORT_TO_ROUTE_VIA_VPN=8080 
+PROTOCOL="tcp"
+
+for ip in $CLIENT_IPS_TO_VPN; do
+  echo "Legger til MARK-regel for $ip (kun $PROTOCOL port $PORT_TO_ROUTE_VIA_VPN)"
+  sudo iptables -t mangle -A PREROUTING -s "$ip" -p $PROTOCOL --dport $PORT_TO_ROUTE_VIA_VPN -j MARK --set-mark 1
+done
+```
+
+#### 5.6 FORWARD-regler (tillat trafikk)
+
+```bash
+echo "--- STEG 5.6: Setter FORWARD-regler ---"
+sudo iptables -A FORWARD -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT
+
+LAN_IFACE="eth0"
+VPN_IFACE="nordlynx"
+sudo iptables -A FORWARD -i $LAN_IFACE -o $VPN_IFACE -m mark --mark 1 -j ACCEPT
+```
+
+#### 5.7 NAT-regler
+
+```bash
+echo "--- STEG 5.7: Setter NAT-regler ---"
+VPN_IFACE="nordlynx"
+LAN_IFACE="eth0"
+
+sudo iptables -t nat -A POSTROUTING -o $VPN_IFACE -j MASQUERADE
+# valgfritt også via LAN:
+# sudo iptables -t nat -A POSTROUTING -o $LAN_IFACE -j MASQUERADE
+```
+
+#### 5.8 Lagre alle reglene permanent
+
+```bash
+echo "--- STEG 5.8: Lagrer reglene permanent ---"
+sudo netfilter-persistent save
+```
+
+> ⚠️ **Merk:** Etter at du lagrer reglene (5.8), kan SSH-tilkoblingen falle dersom INPUT-reglene ikke er riktige. Dobbeltsjekk at du fremdeles har tilgang før du går videre.
+
+#### 5.9 Sett endelige, strenge policyer til DROP
+
+```bash
+echo "--- STEG 5.9: Setter ENDELIG de strenge policyene ---"
 sudo iptables -P INPUT DROP
 sudo iptables -P FORWARD DROP
 sudo iptables -P OUTPUT ACCEPT
-
-# STEG 3: INPUT-regler
-sudo iptables -A INPUT -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT
-sudo iptables -A INPUT -i lo -j ACCEPT
-sudo iptables -A INPUT -p icmp -j ACCEPT
-sudo iptables -A INPUT -s 192.168.1.0/24 -p tcp --dport 22 -j ACCEPT   # SSH
-sudo iptables -A INPUT -s 192.168.1.0/24 -p udp --dport 53 -j ACCEPT   # DNS
-sudo iptables -A INPUT -s 192.168.1.0/24 -p tcp --dport 53 -j ACCEPT   # DNS
-sudo iptables -A INPUT -s 192.168.1.0/24 -p tcp --dport 80 -j ACCEPT   # Pi-hole Web
-
-# STEG 4: MANGLE – marker trafikk
-# TILPASS: Endre IP-adressene og port/protokoll etter behov
-CLIENT_IPS_TO_VPN="192.168.1.128 192.168.1.129 192.168.1.130"
-for ip in $CLIENT_IPS_TO_VPN; do
-    echo "Legger til MARK-regel for $ip (kun TCP port 8080)"
-    sudo iptables -t mangle -A PREROUTING -s "$ip" -p tcp --dport 8080 -j MARK --set-mark 1
-done
-
-# Eksempel: UDP i stedet for TCP
-# sudo iptables -t mangle -A PREROUTING -s 192.168.1.150 -p udp --dport 51820 -j MARK --set-mark 1
-
-# STEG 5: FORWARD-regler
-sudo iptables -A FORWARD -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT
-sudo iptables -A FORWARD -i eth0 -o nordlynx -m mark --mark 1 -j ACCEPT
-sudo iptables -A FORWARD -i eth0 -o eth0 -j ACCEPT
-
-# STEG 6: NAT-regler
-sudo iptables -t nat -A POSTROUTING -o nordlynx -j MASQUERADE
-# Valgfritt: Kun hvis Pi skal NAT-e videre via eth0
-# sudo iptables -t nat -A POSTROUTING -o eth0 -j MASQUERADE
-
-# STEG 7: Lagre
-sudo netfilter-persistent save
 ```
+
+Etter disse stegene:  
+1. Start NordVPN manuelt:  
+
+   ```bash
+   nordvpn connect
+   ```
+
+2. Bekreft tilkobling:  
+
+   ```bash
+   nordvpn status
+   ```
 
 ---
 
@@ -219,8 +331,8 @@ Lim inn innholdet under:
 ```ini
 [Unit]
 Description=NordVPN Gateway Service
-After=network-online.target nordvpnd.service
-Wants=network-online.target
+Wants=network-online.target NetworkManager-wait-online.service
+After=network-online.target NetworkManager-wait-online.service nordvpnd.service
 
 [Service]
 Type=simple
@@ -248,7 +360,6 @@ sudo systemctl daemon-reload
 sudo systemctl enable nordvpn-gateway.service
 sudo systemctl start nordvpn-gateway.service
 ```
-
 ---
 
 ### 8. Konfigurer ruteren
@@ -261,23 +372,27 @@ sudo systemctl start nordvpn-gateway.service
 
 ### 9. Testing og verifisering
 
+**Tjeneste + ruting på Pi**
+
+
 ```bash
 sudo systemctl status nordvpn-gateway.service
-journalctl -u nordvpn-gateway -f
-ip rule show
-ip route show table nordvpntabell
+journalctl -u nordvpn-gateway.service -n 30 -f   # Ctrl+C for å stoppe
+ip rule show | grep fwmark
+ip route show table nordvpntabell                 # (samme som: ip route show table 200)
 ```
 
 Installer tcpdump:
 
 ```bash
-sudo apt install tcpdump
+sudo apt update
+sudo apt install -y tcpdump
 ```
 
 Kjør verifiseringsskript:
 
 ```bash
-wget https://raw.githubusercontent.com/Howard0000/raspberrypi-nordvpn-gateway/main/verify_traffic.sh
+wget -O verify_traffic.sh https://raw.githubusercontent.com/Howard0000/raspberrypi-nordvpn-gateway/main/verify_traffic.sh
 chmod +x verify_traffic.sh
 sudo ./verify_traffic.sh
 ```
@@ -289,6 +404,13 @@ PORT=8080
 IFACE="nordlynx"
 PROTO="tcp"
 ```
+Kjappe ekstra sjekker (valgfritt)
+
+Tellere på mangle-reglene øker:
+```bash
+sudo iptables -t mangle -L PREROUTING -v -n | grep 8080
+```
+
 
 ---
 
@@ -296,15 +418,67 @@ PROTO="tcp"
 
 * Ta backup av `/etc/iptables/rules.v4`, `nordvpn-gateway.sh`, og systemd-unit-filen.
 * Sett opp logrotate om du bruker fil-logging.
+* Når oppsettet fungerer, bør du ta en enkel backup av de viktigste filene.  
+  Da kan du raskt gjenopprette systemet hvis du mister Pi-en eller må reinstallere.
+
+```bash
+cp /etc/iptables/rules.v4 ~/rules.v4.backup
+cp /usr/local/bin/nordvpn-gateway.sh ~/nordvpn-gateway.sh.backup
+sudo cp /etc/systemd/system/nordvpn-gateway.service ~/nordvpn-gateway.service.backup
+```
+Disse filene kan du senere kopiere tilbake til samme steder hvis du reinstallere systemet.
+Husk å kjøre sudo netfilter-persistent reload etter å ha lagt tilbake rules.v4.
 
 ---
 
-## 📡 MQTT og Home Assistant
+## 📨 MQTT og Home Assistant
 
+Skriptet kan publisere status og sensorer til MQTT, slik at Home Assistant kan oppdage dem automatisk.  
 MQTT er **av** som standard (`MQTT_ENABLED=false`).
-Sett til `true` og fyll inn broker/bruker/passord i `nordvpn-gateway.sh` for å aktivere.
 
-Scriptet støtter Home Assistant discovery for status, last\_seen og CPU-temp-sensor.
+### Aktivering
+
+1. **Installer MQTT-klient på Pi**  
+   Dette trengs for å sende meldinger (`mosquitto_pub`):
+
+   ```bash
+   sudo apt update
+   sudo apt install mosquitto-clients -y
+   ```
+
+2. **Rediger `nordvpn-gateway.sh`**  
+   Finn linjene øverst i skriptet og endre:
+
+   ```bash
+   MQTT_ENABLED=true
+   MQTT_BROKER="192.168.1.100"   # IP til din MQTT-broker (ofte Home Assistant)
+   MQTT_USER="brukernavn"        # kan stå tom hvis ikke brukt
+   MQTT_PASS="passord"           # kan stå tom hvis ikke brukt
+   MQTT_CLIENT_ID="nordvpn_gateway_pi"
+   HA_DISCOVERY_PREFIX="homeassistant"
+   ```
+
+3. **Restart tjenesten**
+
+   ```bash
+   sudo systemctl restart nordvpn-gateway.service
+   ```
+
+### Publiserte emner
+
+Når aktivert, publiseres følgende MQTT-emner (retained):
+
+- `nordvpn/gateway/status` → Tilkoblingsstatus (`VPN OK`, `VPN Frakoblet`, `VPN Tilkoblet`)
+- `nordvpn/gateway/last_seen` → Siste tidssjekk (timestamp)
+- `nordvpn/gateway/cpu_temp` → CPU-temperatur på Pi
+
+### Home Assistant auto-discovery
+
+Hvis MQTT-integrasjonen i Home Assistant er konfigurert, oppdages sensorene automatisk:
+
+- `sensor.nordvpn_status`
+- `sensor.nordvpn_sist_sett`
+- `sensor.nordvpn_cpu_temp`
 
 ---
 
