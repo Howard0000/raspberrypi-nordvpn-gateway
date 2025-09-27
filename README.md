@@ -45,10 +45,10 @@ Det inkluderer robust oppstart og overvåkning via MQTT og systemd.
 2. Koble til via SSH.  
 3. Oppdater systemet:
 
-   ```bash
-   sudo apt update && sudo apt full-upgrade -y
-   sudo reboot
-   ```
+```bash
+sudo apt update && sudo apt full-upgrade -y
+sudo reboot
+```
 
    *Etter omstart, koble til via SSH igjen.*
 
@@ -298,15 +298,15 @@ sudo iptables -P OUTPUT ACCEPT
 Etter disse stegene:  
 1. Start NordVPN manuelt:  
 
-   ```bash
-   nordvpn connect
-   ```
+```bash
+nordvpn connect
+```
 
 2. Bekreft tilkobling:  
 
-   ```bash
-   nordvpn status
-   ```
+```bash
+nordvpn status
+```
 
 ---
 
@@ -441,28 +441,28 @@ MQTT er **av** som standard (`MQTT_ENABLED=false`).
 1. **Installer MQTT-klient på Pi**  
    Dette trengs for å sende meldinger (`mosquitto_pub`):
 
-   ```bash
-   sudo apt update
-   sudo apt install mosquitto-clients -y
-   ```
+```bash
+sudo apt update
+sudo apt install mosquitto-clients -y
+```
 
 2. **Rediger `nordvpn-gateway.sh`**  
    Finn linjene øverst i skriptet og endre:
 
-   ```bash
-   MQTT_ENABLED=true
-   MQTT_BROKER="192.168.1.100"   # IP til din MQTT-broker (ofte Home Assistant)
-   MQTT_USER="brukernavn"        # kan stå tom hvis ikke brukt
-   MQTT_PASS="passord"           # kan stå tom hvis ikke brukt
-   MQTT_CLIENT_ID="nordvpn_gateway_pi"
-   HA_DISCOVERY_PREFIX="homeassistant"
-   ```
+```bash
+MQTT_ENABLED=true
+MQTT_BROKER="192.168.1.100"   # IP til din MQTT-broker (ofte Home Assistant)
+MQTT_USER="brukernavn"        # kan stå tom hvis ikke brukt
+MQTT_PASS="passord"           # kan stå tom hvis ikke brukt
+MQTT_CLIENT_ID="nordvpn_gateway_pi"
+HA_DISCOVERY_PREFIX="homeassistant"
+```
 
 3. **Restart tjenesten**
 
-   ```bash
-   sudo systemctl restart nordvpn-gateway.service
-   ```
+```bash
+sudo systemctl restart nordvpn-gateway.service
+```
 
 ### Publiserte emner
 
