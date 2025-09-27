@@ -1,6 +1,6 @@
 # Raspberry Pi: Pi-hole + NordVPN Gateway
 
-Norwegian · [English](README.en.md)
+English · [Norwegian](README.md)
 
 This project sets up a Raspberry Pi as a combined DNS filtering server (Pi-hole) and NordVPN gateway with selective routing based on IP and/or ports.  
 It includes robust startup and monitoring via MQTT and systemd.
